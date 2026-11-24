@@ -2598,10 +2598,10 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
       <div class="row between" style="margin:16px 0 12px;align-items:flex-end"><div><h2>Systems map</h2><div class="sub">Tap a concept to see what it affects and what affects it.</div></div>
       <div class="map-legend">${Object.entries(col).map(([k, v]) => `<span><span class="dot" style="background:${v}"></span>${LBL[k]}</span>`).join('')}</div></div>
       <div class="map2"><div class="map2-body" id="mbody">${body}<svg id="mlines" aria-hidden="true"></svg></div><aside class="mpanel" id="mpanel" aria-live="polite">${DEF_P}</aside></div>`);
-    const mb = $('#mbody'), mp = $('#mpanel'); let sel = null;
+    const mb = $('#mbody'), mp = $('#mpanel'), mL = $('#mlines'); let sel = null;
     function clear() {
       sel = null; mb.classList.remove('focus'); mp.classList.remove('open'); mp.innerHTML = DEF_P;
-      $$('.cpt', mb).forEach(r => { r.classList.remove('on', 'nb'); r.setAttribute('aria-pressed', 'false'); }); $$('.sys', mb).forEach(s => s.classList.remove('nbs'));
+      $$('.cpt', mb).forEach(r => { r.classList.remove('on', 'nb'); r.setAttribute('aria-pressed', 'false'); }); $$('.sys', mb).forEach(s => s.classList.remove('nbs')); drawLines();
     }
     function pick(id) {
       if (sel === id) return clear();
@@ -2614,7 +2614,28 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
         <div class="row" style="margin-top:12px"><button class="btn pri" data-go="concept/${id}">Drill this</button></div>`;
       $('.x', mp).onclick = clear;
       $$('[data-side]', mp).forEach(b => b.onclick = () => { pick(b.dataset.side); $(`.cpt[data-c="${b.dataset.side}"]`, mb).scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+      drawLines();
     }
+    // Lines from the selected dot to each linked dot, in #mbody coordinates; drawn in shortest first.
+    function drawLines() {
+      const br = mb.getBoundingClientRect(); mL.replaceChildren(); mL.setAttribute('viewBox', `0 0 ${br.width} ${br.height}`);
+      if (!sel) return;
+      const ctr = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2 - br.left, r.top + r.height / 2 - br.top]; };
+      const [x1, y1] = ctr($(`.cpt[data-c="${sel}"] .dot`, mb));
+      const ps = $$('.cpt.nb .dot', mb).map(d => {
+        const [x2, y2] = ctr(d), sign = x2 >= x1 ? 1 : -1, dx = Math.max(40, Math.abs(x2 - x1) / 2), sx = Math.max(x1, x2) + 64;
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', Math.abs(x2 - x1) < 24 ? `M ${x1} ${y1} C ${sx} ${y1}, ${sx} ${y2}, ${x2} ${y2}` : `M ${x1} ${y1} C ${x1 + dx * sign} ${y1}, ${x2 - dx * sign} ${y2}, ${x2} ${y2}`);
+        mL.appendChild(p); return [p, p.getTotalLength()];
+      }).sort((a, b) => a[1] - b[1]);
+      // getTotalLength already styled each path at offset 0, so park it at its length with transitions off, flush, then switch them back on
+      ps.forEach(([p, L]) => { p.style.transition = 'none'; p.style.strokeDasharray = p.style.strokeDashoffset = L + 'px'; });
+      mL.getBoundingClientRect();
+      ps.forEach(([p], i) => { p.style.transition = ''; p.style.transitionDelay = i * 24 + 'ms'; });
+      requestAnimationFrame(() => ps.forEach(([p]) => { p.style.strokeDashoffset = '0px'; }));
+    }
+    const ro = new ResizeObserver(() => drawLines()); ro.observe(mb); cleanup.push(() => ro.disconnect());
+    document.fonts.ready.then(drawLines);
     mb.addEventListener('click', e => { const r = e.target.closest('.cpt'); if (r) pick(r.dataset.c); else if (sel) clear(); });
     const key = e => { if (e.key === 'Escape' && sel) clear(); };
     document.addEventListener('keydown', key); cleanup.push(() => document.removeEventListener('keydown', key));
