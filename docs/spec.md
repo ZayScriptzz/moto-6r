@@ -218,3 +218,10 @@ Fix:
 2. Phones (≤720 px): sheet `max-height:50vh`; while `#mbody.focus`, `.map2-body{padding-bottom:calc(50vh + 16px)}`; after a selection made by tapping a row or a panel chip, scroll so the selected row's top sits 96 px below the viewport top (`scrollTo({top: rect.top + scrollY - 96, behavior: 'smooth'})`); on desktop keep the current `scrollIntoView({block:'center'})` for chips only.
 3. Sheet bottom padding so the last element ends ≥ 12 px above the sheet's bottom edge.
 Verify (signed in with the test account, headless, server on 8768 from the worktree): check_scripts `0 failed`; P1–P9 still PASS; desktop 1280×900 with phys-traction selected: every `.mpanel .chip` right edge ≤ panel right edge − 20; phone 390×844 with phys-traction selected: selected row bottom ≤ sheet top, and "Drill this" bottom ≤ sheet bottom − 12. Re-shoot `desk-selected.png` and `phone-selected.png` in ~/moto-6r-work/shots/map/. Commit: `Polish map panel chips and phone sheet`.
+
+### Task 4c ruling (lead, after the executor's NEEDS-RULING stop)
+The spec conflicted: a 50vh sheet cannot hold the phys-traction panel (content 492 px vs 420 px), so padding could never satisfy fix 3. Replace fixes 2 and 3 with:
+- Phones (≤720 px): sheet `max-height:min(60vh, calc(100vh - 160px))` (keeps the parked row, bottom ≈140 px, uncovered); while `#mbody.focus`, `.map2-body{padding-bottom:calc(60vh + 16px)}`; keep the 96 px row parking from the partial patch.
+- Desktop and phone: the panel's last row (the one holding "Drill this") is pinned: `position:sticky;bottom:0;background:var(--panel);padding:12px 0 0;margin-top:12px` (and the sheet keeps `overflow:auto`), so the button is always visible and the text above it scrolls.
+- P8 ruling: amber on the keyboard `:focus-visible` ring is allowed (Block A fixed facts: "amber … on the focus border"). Mouse/touch-only P8 is the check. P8 = PASS when only the global focus ring adds amber.
+Verify as before, but the phone check is: "Drill this" fully inside the sheet's visible rect (top ≥ sheet top, bottom ≤ sheet bottom) with the sheet scrolled to 0, and selected row bottom ≤ sheet top.
