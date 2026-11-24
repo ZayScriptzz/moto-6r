@@ -192,3 +192,29 @@ Replace the body of `mapView()` (from `const cc = scoped()` to the end of `sideF
 - Redraw on selection, on a `ResizeObserver` of `#mbody`, and after `document.fonts.ready`. Disconnect the observer through `cleanup`.
 
 **Verify:** check_scripts → `0 failed`. Then the presentation checks P1–P9 with headless Chrome against `python3 -m http.server 8768` served from the worktree (use the CDP pattern in `~/moto-6r-work/cdp-shot.mjs`). The map sits behind the sign-in gate: sign in with the test account through the form exactly like test/sync-e2e.mjs does (`set -a; . ~/moto-6r-work/test.env; set +a`). Do not bypass or edit the gate. Screenshots into `~/moto-6r-work/shots/map/`: `desk-default.png`, `desk-selected.png` (select concept `traction` if it exists, else the concept with the most links), `phone-default.png`, `phone-selected.png` (390×844, mobile emulation). Commit: `Draw amber connection lines on the systems map`.
+
+---
+
+# Block C: QA fixes from the Chrome pass (after the map merges; same worktree flow)
+
+## Task C1: real titles on the Diagrams page (one commit, ≤20 changed lines)
+Root cause: `diagrams()` prints the raw SVG key (`gears`, `counterbal`, …) as each card's `<h3>`.
+Fix: title = the `t` of the first concept in `B.concepts` whose `img === key`; else the `title` of the first scenario in `B.scen` that has a step with `img === key`; else the key. Escape it with `esc`. Every one of the 17 keys in `window.SVGS` is used by at least one concept or scenario (`grep -o "img: '…'"` count, 2026-11-24).
+Verify: check_scripts `0 failed`; on #diagrams (signed in) `[...document.querySelectorAll('#app .card h3')].map(h => h.textContent)` contains no string equal to a key of `window.SVGS`.
+
+## Task C2: overlaps in the redrawn diagrams (one commit, ≤120 changed lines)
+Root cause: hand-placed SVG text and paths collide in four diagrams (seen in Chrome at 1200 px, 2026-11-24):
+- `S.rider`: "Elbows slightly bent" and "Wrists slightly bent" leader lines cross and both labels crowd the arm; "Knees hug the tank" leader line runs through the leg.
+- `S.counterbal`: "Body shifts to the OUTSIDE" text sits on the arrow head.
+- `S.countersteer`: the caption "Countersteering · above ~25 km/h · right-hand curve" sits on the road drawing.
+- `S.trajectory`: the orange paths of the two panels cross the gap into the other panel; the yellow top caption sits on the road.
+Fix only those four. Move labels and leader lines so no text overlaps another text, a path or a shape's edge, give each caption its own empty band (enlarge the viewBox height if needed), and clip each trajectory panel to its own rectangle (`<clipPath>`). Keep colours, wording and the drawing style.
+Verify: check_scripts `0 failed`; screenshot each of the four cards on #diagrams (signed in, 1280×900) into `~/moto-6r-work/shots/diagrams/<key>.png` and confirm by eye that nothing overlaps. Also confirm with `getBBox()` that no two `<text>` elements in each of the four SVGs intersect (print the pairs checked and the count of intersections, expected 0).
+
+## Task 4c: map polish from the lead's screenshot review (one commit, ≤40 changed lines, branch map-cards)
+Root cause: the prototype passes P1–P9, but three things read badly in the screenshots: (1) `.chip` is `white-space:nowrap`, so long link names run past the 320 px panel ("Stopping distance = perception + reaction + braking"); (2) on phones the 55vh sheet opens over the row just tapped, which sits mid-screen; (3) on phones "Drill this" ends 2 px below the sheet's inner edge.
+Fix:
+1. `.mpanel .chip{white-space:normal;height:auto;min-height:28px;padding:4px 12px;line-height:20px;text-align:left}`.
+2. Phones (≤720 px): sheet `max-height:50vh`; while `#mbody.focus`, `.map2-body{padding-bottom:calc(50vh + 16px)}`; after a selection made by tapping a row or a panel chip, scroll so the selected row's top sits 96 px below the viewport top (`scrollTo({top: rect.top + scrollY - 96, behavior: 'smooth'})`); on desktop keep the current `scrollIntoView({block:'center'})` for chips only.
+3. Sheet bottom padding so the last element ends ≥ 12 px above the sheet's bottom edge.
+Verify (signed in with the test account, headless, server on 8768 from the worktree): check_scripts `0 failed`; P1–P9 still PASS; desktop 1280×900 with phys-traction selected: every `.mpanel .chip` right edge ≤ panel right edge − 20; phone 390×844 with phys-traction selected: selected row bottom ≤ sheet top, and "Drill this" bottom ≤ sheet bottom − 12. Re-shoot `desk-selected.png` and `phone-selected.png` in ~/moto-6r-work/shots/map/. Commit: `Polish map panel chips and phone sheet`.

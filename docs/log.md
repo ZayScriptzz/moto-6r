@@ -25,3 +25,9 @@
   - Physics lab: perception band dominates the lane, braking band is a sliver at the horizon, yellow band covers the centre line.
   - Home on phone: 17 route stops crowd into one chain.
   - No console errors on any screen visited (campaign, node, scen, play, lab, burst, diagrams, map, settings).
+
+## 2026-11-24 11:29 EST: A8 sync proven
+- Tester (Sonnet) first run: step 6 failed because the test checked dirty=false before the 250 ms debounced save ran (false PASS at step 5); fixed in a66aafc (wait for savedAt to advance) + profile cleanup retries.
+- Re-run local against live Supabase: 10/10 PASS twice (fresh and existing progress). Red run on 5d04e2d: FAIL as expected (no sync code).
+- Live run blocked: GitHub has no cert yet (it cached NXDOMAIN when Pages was enabled before the DNS record; SOA negative TTL 3601 s), and Chrome auto-upgrades http to https, so the page errors in Chrome until the cert exists.
+- Zay picked "System cards" for the map. Block B spec + feel-ladder sheet in spec.md; prototype on branch map-cards (worktree ~/moto-6r-work/map-cards).
