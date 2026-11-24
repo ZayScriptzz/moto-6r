@@ -114,3 +114,81 @@ Two Chrome instances, each with its own fresh `--user-data-dir` (device A and de
 9. No uncaught exception (`Runtime.exceptionThrown`) on A or B during the run (`[moto6r]` warnings are allowed and printed).
 
 **Verify:** `node --check test/sync-e2e.mjs`. Do NOT run it against the server: the test user is created by the lead, and a Sonnet tester runs it. Commit: `Add two-device sync E2E test`.
+
+---
+
+# Block B: systems map rebuild (Zay picked "System cards", 2026-11-24)
+
+Work happens on branch `map-cards` in the worktree `~/moto-6r-work/map-cards` (NOT in ~/moto-6r). Nothing merges to main or gets pushed until Zay sees the prototype screenshots and says yes.
+
+## Why (root cause, one sentence)
+`mapView()` places 112 concepts with a global repulsion simulation that has no containment and draws them into a fixed 1560×1180 SVG viewBox, so dots drift out of their system boxes and onto titles, 11px labels render at ~7px and overlap, every cross-system link is drawn at once, and on a phone the whole graph shrinks to a thumbnail under the panel.
+
+## Feel-ladder sheet (moment: selecting a concept)
+```
+Moment: concept select   Tier: Few   Top rung: 4
+Metaphor: none drawn (lines are road-paint amber, the app's accent)
+1 Designed:  selected row = hero (amber dot ring + ink label + raised surface) | input = tap/click a row | hit area = whole row, min-height 36px (44px under 720px)
+2 Alive:     links draw out from the selected dot (stroke-dashoffset length→0, 280ms var(--ease), 24ms stagger) | dim of the rest = opacity 160ms
+3 Polished:  only lines + opacity animate; selecting never changes any size (no border-width change); counts tabular mono
+4 Playable:  interruptible: a new tap clears old lines at once and draws the new set; panel chips select + smooth-scroll the row to centre | no sound | momentum n/a (tap control)
+5 Real:      skipped (gate)
+6 Ships:     rows are <button>s with aria-pressed; Enter/Space select, Escape clears; panel aria-live="polite"; reduced motion = lines appear at once (global rule already kills transitions); context kept: legend, Home, "Drill this"
+Felt check for Zay: tap Traction: do amber lines grow out of its dot to every linked concept in a blink while everything else steps back? Tap another concept mid-draw: does it switch at once?
+```
+
+## Presentation (acceptance criteria, all measured in the prototype)
+P1. Every concept row sits inside its own system card: for every `.cpt`, `CON[row.dataset.c].n === row.closest('.sys').dataset.n`.
+P2. Concept labels are full text (no ellipsis, no `slice`), computed font-size ≥ 14px.
+P3. 1280×900: the panel is a sticky column on the right and its rect does not intersect any `.sys` rect.
+P4. 390 px wide: `document.documentElement.scrollWidth <= innerWidth`; cards stack in one column; the sheet is off-screen until a concept is selected, then on-screen with "Drill this".
+P5. Selecting a concept with N links draws exactly N `path`s in `#mlines`; each path starts within 6 px of the selected row's dot centre and ends within 6 px of a linked row's dot centre.
+P6. While a concept is selected, rows that are neither it nor linked to it have computed opacity ≤ 0.4.
+P7. Escape (or tapping the selected row again) → 0 paths, no dimming, panel back to its default text.
+P8. Tokens only. Amber appears only on: the selected row's dot ring, the lines, the linked rows' end dots, the "Drill this" button.
+P9. No uncaught exception or console error on #map.
+
+## Task 4a: cards, panel, selection (one commit, ≤120 changed lines)
+Replace the body of `mapView()` (from `const cc = scoped()` to the end of `sideFor`) and the map CSS. Keep the function name and the `map` route.
+- Sweep first: `grep -n -F` each of `mapwrap`, `.side`, `#side`, `data-side`, `msvg`, `mg`, `map-legend`, `sideFor` in index.html; list hits; remove `.mapwrap*` and `.side*` rules only if nothing else uses them.
+- Markup, in order: the existing Home ghost button; header row as now (h2 "Systems map", sub "Tap a concept to see what it affects and what affects it.", the existing legend); then `<div class="map2"><div class="map2-body" id="mbody">…chapters…<svg id="mlines" aria-hidden="true"></svg></div><aside class="mpanel" id="mpanel" aria-live="polite">…</aside></div>`.
+- Chapters: iterate `B.nodes.filter(n => n.sec === 'moto')` in order, start a new chapter block whenever `CH_START[n.id]` exists (`<div class="sec-h"><h3>${CH_START[id]}</h3></div>` then a `.sys-grid`). Use the `CH_START` constant already defined for the campaign (move it to a shared scope if it is local to another function; say so in the report). A system card is emitted only if `scopedNode(n.id)` is non-empty.
+- System card: `<section class="sys" data-n="${n.id}"><div class="sys-h"><span class="sys-t">${esc(n.title)}</span><span class="meta mono">${m}/${total}</span></div>` then one `<button class="cpt" data-c="${c.id}" aria-pressed="false"><span class="dot ${status(c)}"></span><span>${esc(c.t)}</span></button>` per concept in `scopedNode(n.id)` order.
+- Links: the same edge set as today (both directions, both ends in scope, no self-links).
+- Selection: clicking a `.cpt` sets `#mbody.focus`, `.on` + `aria-pressed="true"` on it, `.nb` on linked rows, `.nbs` on cards holding the selected row or a linked row; renders the panel (content = today's `sideFor` content, unchanged wording, plus its chips call the same select function and `scrollIntoView({block:'center', behavior:'smooth'})` the row). Clicking the selected row again, Escape, or a click on empty `#mbody` space clears. Remove the keydown listener through the existing `cleanup` array (look at how the scenario player registers it).
+- Default panel: `<h3>Pick a concept</h3><p class="sub">Each concept is one idea from the guide. Lines show the ideas it explains or depends on. Drilling a concept asks it in several different ways.</p>`
+- CSS (put it where `.mapwrap` was):
+```css
+.map2{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+.map2-body{position:relative}
+.map2-body .sec-h:first-child{margin-top:0}
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.sys{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 12px 12px;transition:opacity .16s var(--ease)}
+.sys-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 8px 8px}
+.sys-t{font:600 20px/1.1 var(--font-d)}
+.cpt{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:6px 8px;background:none;border:0;border-radius:8px;text-align:left;font-size:14px;line-height:20px;color:var(--ink2);cursor:pointer;transition:background-color .15s var(--ease),color .15s var(--ease),opacity .16s var(--ease)}
+.cpt:hover{background:var(--panel2);color:var(--ink)}
+.cpt .dot{box-shadow:0 0 0 2px transparent;transition:box-shadow .15s var(--ease)}
+.cpt.on{background:var(--raised);color:var(--ink)}
+.cpt.on .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--amber)}
+.cpt.nb{color:var(--ink)}
+.cpt.nb .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 3px rgba(242,194,0,.6)}
+.focus .cpt:not(.on):not(.nb){opacity:.35}
+.focus .sys:not(.nbs){opacity:.6}
+#mlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#mlines path{fill:none;stroke:var(--amber);stroke-width:1.5;stroke-linecap:round;opacity:.85;transition:stroke-dashoffset .28s var(--ease)}
+.mpanel{position:sticky;top:72px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;max-height:calc(100vh - 96px);overflow:auto}
+.mpanel p{margin-top:8px}
+.mpanel .x{display:none}
+```
+  and inside `@media (max-width:720px)`: `.map2{grid-template-columns:1fr}` `.cpt{min-height:44px}` `.mpanel{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:55vh;z-index:30;transform:translateY(calc(100% + 16px));transition:transform .24s var(--ease);border-color:var(--line2)}` `.mpanel.open{transform:none}` `.mpanel .x{display:inline-flex;position:absolute;top:8px;right:8px}`. Under 980px and above 720px use one column too (add `@media (max-width:980px){.map2{grid-template-columns:1fr}.mpanel{position:static;max-height:none}}` before the 720 block).
+- On phones the panel gets `.open` when a concept is selected and a close button `<button class="btn ghost x" aria-label="Close">${I.x}</button>` that clears the selection.
+
+**Verify:** `python3 test/check_scripts.py index.html | tail -1` → `11 inline scripts, 0 failed`. Commit: `Rebuild systems map as system cards`.
+
+## Task 4b: connection lines (one commit, ≤60 changed lines)
+- `drawLines()`: clear `#mlines`; if a concept is selected, for each linked row compute both dot centres relative to `#mbody` (`getBoundingClientRect` minus `#mbody`'s rect), and append `<path d="M x1 y1 C cx1 cy1, cx2 cy2, x2 y2">` where the control points pull horizontally (`dx = Math.max(40, Math.abs(x2 - x1) / 2)`; `cx1 = x1 + dx*sign`, `cx2 = x2 - dx*sign`, `sign = x2 >= x1 ? 1 : -1`; when `|x2 - x1| < 24` pull sideways instead: `cx1 = cx2 = Math.max(x1, x2) + 64`, `cy1 = y1`, `cy2 = y2`). Set the SVG `viewBox` / size to `#mbody`'s box.
+- Draw-in: each path gets `stroke-dasharray = stroke-dashoffset = getTotalLength()`, then on the next frame `stroke-dashoffset = 0` with `transition-delay = i * 24ms`, ordered by path length (shortest first). A new selection clears old paths at once (no fade-out queue).
+- Redraw on selection, on a `ResizeObserver` of `#mbody`, and after `document.fonts.ready`. Disconnect the observer through `cleanup`.
+
+**Verify:** check_scripts → `0 failed`. Then the presentation checks P1–P9 with headless Chrome against `python3 -m http.server 8768` served from the worktree (use the CDP pattern in `~/moto-6r-work/cdp-shot.mjs`; the gate needs a session, so for the prototype set `window.__protoNoGate` handling is NOT allowed: instead load the page with the Store gate bypassed by serving a copy where the auth gate is skipped is NOT allowed either. Use the test account: `set -a; . ~/moto-6r-work/test.env; set +a` and sign in through the form exactly like test/sync-e2e.mjs does). Screenshots into `~/moto-6r-work/shots/map/`: `desk-default.png`, `desk-selected.png` (select concept `traction` if it exists, else the concept with the most links), `phone-default.png`, `phone-selected.png` (390×844, mobile emulation). Commit: `Draw amber connection lines on the systems map`.
