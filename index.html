@@ -194,6 +194,16 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,8px)}}
 .kbd{display:inline-block;font:600 11px/18px var(--font-ui);border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 6px;color:var(--ink2);background:var(--bg2)}
 .fr{color:var(--mute);font-size:13px}
+/* sign-in */
+.auth-in{display:grid;grid-template-columns:1fr 360px;gap:32px;align-items:center;min-height:calc(100vh - 200px)}
+.auth-card{display:flex;flex-direction:column}
+.auth-card h3{margin-bottom:16px}
+.auth-card label{font-size:13px;color:var(--ink2);margin-bottom:8px}
+.auth-card input{height:44px;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;padding:0 12px;color:var(--ink);font:15px var(--font-ui);margin:0 0 16px;transition:border-color .15s var(--ease)}
+.auth-card input:focus{outline:none;border-color:rgba(242,194,0,.6)}
+.auth-card .btn{margin-top:8px;width:100%}
+.auth-card .btn:disabled{opacity:.6;cursor:default}
+.auth-err{color:#ff8a6e;font-size:13px;margin-top:12px;min-height:20px}
 @media (max-width:720px){
   .hero,.lower{grid-template-columns:1fr}
   .hero{gap:24px;margin:8px 0 16px}
@@ -208,6 +218,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   .chips .hide-s{display:none}
   .route-h .btn{display:none}
   .stop-r{min-width:0;width:100%;text-align:left}
+  .auth-in{grid-template-columns:1fr;min-height:0;gap:24px;margin-top:8px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -218,61 +229,133 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   <div class="chips" id="chips"></div>
 </div></header>
 <main class="wrap" id="app"></main>
+<main class="wrap auth" id="auth" hidden>
+  <div class="auth-in">
+    <div>
+      <p class="eyebrow">SAAQ Class 6R knowledge test · motorcycle section</p>
+      <h1>Ride the guide on any device</h1>
+      <p class="lede">Sign in and your mastered concepts, due reviews and campaign stop follow you between your phone and your laptop.</p>
+    </div>
+    <form class="card auth-card" id="auth-form" novalidate>
+      <h3>Sign in</h3>
+      <label for="auth-email">Email</label>
+      <input id="auth-email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false">
+      <label for="auth-pass">Password</label>
+      <input id="auth-pass" type="password" autocomplete="current-password">
+      <button type="submit" class="btn pri lg" id="auth-go">Sign in</button>
+      <p class="auth-err" id="auth-err" role="alert"></p>
+    </form>
+  </div>
+</main>
 <script>window.CONFIG = { bookCrops: false }; /* turned on after sign-in, once the book illustrations load from moto_assets */</script>
 <script>window.CROPIMG = {}; /* filled after sign-in: the SAAQ book crops are login-only, never in this public file */</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>/* ONE storage layer. The app only ever calls Store.load() / Store.save(state).
    Offline build: LocalAdapter (browser localStorage).
-   Website build (moto.zxyframe.ca): swap in SupabaseAdapter — nothing else changes.
-
-   Suggested Supabase table (one row per user, RLS on):
-     create table progress (
-       user_id uuid primary key references auth.users on delete cascade,
-       state jsonb not null,
-       updated_at timestamptz not null default now()
-     );
-     alter table progress enable row level security;
-     create policy "own row" on progress for all
-       using (auth.uid() = user_id) with check (auth.uid() = user_id);
+   Website build (moto.zxyframe.ca): the sign-in gate below starts SupabaseAdapter. 'moto6r.state.v1' stays the offline cache
+   (same shape as the offline build's exports), 'moto6r.sync.v1' = { uid, savedAt, dirty }, public.moto_progress holds one row per user (RLS).
 */
 (function () {
-  const KEY = 'moto6r.state.v1';
+  const KEY = 'moto6r.state.v1', META = 'moto6r.sync.v1', warn = (m, e) => console.warn('[moto6r] ' + m, e);
+  const SB_URL = 'https://chqogvxuoeypraplllhx.supabase.co', SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNocW9ndnh1b2V5cHJhcGxsbGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2ODQ4MzAsImV4cCI6MjEwODI2MDgzMH0.y9sWNcV3V08P9G4_rTvq-1iizxDRDrAyyepX0NdcMh0'; // public anon key, RLS protects the data
 
   const LocalAdapter = {
     name: 'local',
     async load() {
-      try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+      try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { warn('local load failed', e); return null; }
     },
     async save(state) {
-      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage full or blocked: keep in memory */ }
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { warn('local save failed, kept in memory', e); }
     },
   };
 
-  /* Website version. Needs window.supabase (supabase-js v2) and a signed-in user.
-  const SupabaseAdapter = {
-    name: 'supabase',
-    async load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data } = await supabase.from('progress').select('state').eq('user_id', user.id).maybeSingle();
-      return data ? data.state : null;
-    },
-    async save(state) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      await supabase.from('progress').upsert({ user_id: user.id, state, updated_at: new Date().toISOString() });
-    },
-  };
-  */
+  /* Website version: localStorage is the offline cache, the moto_progress row the shared copy; the newer savedAt wins. */
+  function SupabaseAdapter(sb, uid) {
+    const rd = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { warn('cache read failed', e); return null; } };
+    const wr = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { warn('cache write failed', e); } };
+    let meta = rd(META), queue = Promise.resolve();
+    if (!meta || meta.uid !== uid) meta = { uid, savedAt: 0, dirty: false };
+    const local = () => (meta.savedAt > 0 ? rd(KEY) : null), setMeta = m => wr(META, Object.assign(meta, m));
+    const take = row => { wr(KEY, row.state); setMeta({ savedAt: row.at, dirty: false }); return row.state; };
+    const fail = (m, e) => { A.lastError = e; warn(m, e); };
+    const upsert = async () => { // clears dirty only if nothing was saved while the request ran
+      if (!meta.dirty) return;
+      const at = meta.savedAt, { error } = await sb.from('moto_progress').upsert({ user_id: uid, state: local(), updated_at: new Date(at).toISOString() });
+      if (error) throw error;
+      if (meta.savedAt === at) setMeta({ dirty: false });
+    };
+    const A = {
+      name: 'supabase', meta, lastError: null,
+      async pull() {
+        const { data, error } = await sb.from('moto_progress').select('state,updated_at').eq('user_id', uid).maybeSingle();
+        if (error) throw error;
+        return data ? { state: data.state, at: Date.parse(data.updated_at) } : null;
+      },
+      push() { return (queue = queue.then(upsert, upsert)); }, // one upsert at a time: an older state never lands after a newer one
+      async load() {
+        try { const row = await A.pull(); A.lastError = null; if (row && (row.at > meta.savedAt || local() == null)) return take(row); if (meta.dirty) await A.push(); } catch (e) { fail('load: sync failed, using the copy on this device', e); }
+        return local();
+      },
+      async save(state) { wr(KEY, state); setMeta({ savedAt: Date.now(), dirty: true }); try { await A.push(); A.lastError = null; } catch (e) { fail('save: sync failed, kept on this device', e); } },
+      async refresh() {
+        try { await A.push(); const row = await A.pull(); A.lastError = null; if (row && row.at > meta.savedAt) return take(row); } catch (e) { fail('refresh: sync failed', e); }
+        return null;
+      },
+    };
+    return A;
+  }
 
-  let adapter = LocalAdapter, mem = null, timer = null;
+  let adapter = LocalAdapter, mem = null, timer = null, fire = null, ready = null, onRemote = null, sb = null, entered = false;
   window.Store = {
+    ready: new Promise(r => (ready = r)),
+    email: '',
     use(a) { adapter = a; },
+    start(a) { adapter = a; ready(); },
     get adapterName() { return adapter.name; },
     async load() { mem = (await adapter.load()) || null; return mem; },
-    save(state) { mem = state; clearTimeout(timer); timer = setTimeout(() => adapter.save(mem), 250); },
-    async reset() { mem = null; await adapter.save(null); try { localStorage.removeItem(KEY); } catch (e) {} },
+    save(state) { mem = state; clearTimeout(timer); timer = setTimeout(fire = () => { fire = null; return adapter.save(mem); }, 250); },
+    flush() { clearTimeout(timer); return fire ? fire() : Promise.resolve(); },
+    async reset() { mem = null; await adapter.save(null); try { localStorage.removeItem(KEY); } catch (e) { warn('reset: cache clear failed', e); } },
     exportJSON() { return JSON.stringify(mem); },
+    onRemote(fn) { onRemote = fn; },
+    async refresh() { await Store.flush(); const s = adapter.refresh && (await adapter.refresh()); if (s) { mem = s; if (onRemote) onRemote(s); } },
+    status() { return { adapter: adapter.name, pending: !!(adapter.meta && adapter.meta.dirty), error: !!adapter.lastError }; },
+    async signOut() {
+      await Store.flush();
+      if (adapter.meta && adapter.meta.dirty) await adapter.push().catch(e => warn('sign-out: sync failed', e));
+      if (adapter.meta && adapter.meta.dirty) return 'pending';
+      try { const { error } = await sb.auth.signOut(); if (error) warn('sign-out refused', error); } catch (e) { warn('sign-out failed', e); }
+      try { localStorage.removeItem(KEY); localStorage.removeItem(META); } catch (e) { warn('sign-out: cache clear failed', e); }
+      location.reload();
+    },
   };
+
+  /* Sign-in gate (same pattern as track.zxyframe.ca): #auth while signed out, #app + #chips once there is a session. */
+  const $ = id => document.getElementById(id), err = $('auth-err'), go = $('auth-go'), NOLIB = 'Couldn’t load the sign-in library. Check your connection and reload';
+  const gate = on => { $('auth').hidden = on; $('app').hidden = !on; $('chips').hidden = !on; $('chips').style.display = on ? '' : 'none'; }; // .chips sets display:flex, so [hidden] alone does not hide it
+  function showAuth(msg) { gate(false); err.textContent = msg || ''; go.disabled = false; go.textContent = 'Sign in'; }
+  function enter(session) { entered = true; gate(true); Store.email = session.user.email || ''; Store.start(SupabaseAdapter(sb, session.user.id)); }
+  $('auth-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const em = $('auth-email').value.trim(), pw = $('auth-pass').value;
+    if (!sb) return showAuth(NOLIB);
+    if (!em || !pw) { err.textContent = 'Enter your email and password'; return; }
+    go.disabled = true; go.textContent = 'Signing in…'; err.textContent = '';
+    try {
+      const r = await sb.auth.signInWithPassword({ email: em, password: pw });
+      if (r.error) { warn('sign-in refused', r.error); showAuth(/invalid login/i.test(r.error.message) ? 'Wrong email or password' : r.error.message); }
+      else { $('auth-pass').value = ''; enter(r.data.session); }
+    } catch (e) { warn('sign-in failed', e); showAuth('Couldn’t reach the server. Try again'); }
+  });
+  addEventListener('pagehide', () => Store.flush());
+  document.addEventListener('visibilitychange', () => { if (entered && !document.hidden) Store.refresh(); });
+  addEventListener('online', () => { if (entered) Store.refresh(); });
+  (async () => {
+    if (!window.supabase || !window.supabase.createClient) { warn('supabase-js did not load', window.supabase); return showAuth(NOLIB); }
+    sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+    sb.auth.onAuthStateChange(evt => { if (evt === 'SIGNED_OUT' && entered) location.reload(); });
+    try { const r = await sb.auth.getSession(); if (r.data && r.data.session) enter(r.data.session); else showAuth(''); } catch (e) { warn('session check failed', e); showAuth(''); }
+  })();
 })();
 </script>
 <script>/* Question bank core. Source: SAAQ "Operating a Motorcycle", 4th ed. (2025).
@@ -2580,12 +2663,15 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
   }
 
   // ───────────── boot ─────────────
+  const hydrate = saved => Object.assign(DEF(), saved, { settings: Object.assign(DEF().settings, saved.settings) });
   (async () => {
+    await Store.ready;
     const saved = await Store.load();
-    if (saved && saved.v === 1) S = Object.assign(DEF(), saved, { settings: Object.assign(DEF().settings, saved.settings) });
+    if (saved && saved.v === 1) S = hydrate(saved);
     route();
   })();
-  window.__app = { status, CON, get S() { return S; } };
+  Store.onRemote(saved => { if (!saved || saved.v !== 1) return; S = hydrate(saved); route(); toast('Progress updated from your other device'); });
+  window.__app = { status, CON, hydrate, get S() { return S; } };
 })();
 </script>
 </body>
