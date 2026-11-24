@@ -172,10 +172,27 @@ textarea.recall:focus{outline:none;border-color:rgba(242,194,0,.6)}
 .sec-h h3{color:var(--ink2)}
 .lock{opacity:.55}
 /* map */
-.mapwrap{position:relative;height:72vh;min-height:460px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;touch-action:none}
-.mapwrap svg{width:100%;height:100%;cursor:grab}
-.side{position:absolute;right:12px;top:12px;width:min(340px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:rgba(23,25,28,.97);border:1px solid var(--line2);border-radius:12px;padding:16px}
-.side p{margin-top:8px}
+.map2{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+.map2-body{position:relative}
+.map2-body .sec-h:first-child{margin-top:0}
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.sys{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 12px 12px;transition:opacity .16s var(--ease)}
+.sys-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 8px 8px}
+.sys-t{font:600 20px/1.1 var(--font-d)}
+.cpt{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:6px 8px;background:none;border:0;border-radius:8px;text-align:left;font-size:14px;line-height:20px;color:var(--ink2);cursor:pointer;transition:background-color .15s var(--ease),color .15s var(--ease),opacity .16s var(--ease)}
+.cpt:hover{background:var(--panel2);color:var(--ink)}
+.cpt .dot{box-shadow:0 0 0 2px transparent;transition:box-shadow .15s var(--ease)}
+.cpt.on{background:var(--raised);color:var(--ink)}
+.cpt.on .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--amber)}
+.cpt.nb{color:var(--ink)}
+.cpt.nb .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 3px rgba(242,194,0,.6)}
+.focus .cpt:not(.on):not(.nb){opacity:.35}
+.focus .sys:not(.nbs){opacity:.6}
+#mlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#mlines path{fill:none;stroke:var(--amber);stroke-width:1.5;stroke-linecap:round;opacity:.85;transition:stroke-dashoffset .28s var(--ease)}
+.mpanel{position:sticky;top:72px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;max-height:calc(100vh - 96px);overflow:auto}
+.mpanel p{margin-top:8px}
+.mpanel .x{display:none}
 .map-legend{display:flex;gap:16px;font-size:12px;color:var(--ink2)}
 .map-legend span{display:inline-flex;align-items:center;gap:8px}
 /* lab */
@@ -212,6 +229,7 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .settings .progress-card .sync-line{display:flex;align-items:center;gap:8px;margin:0 0 16px}
 .dot.ok{background:var(--green)}
 .dot.wait{background:var(--amber2)}
+@media (max-width:980px){.map2{grid-template-columns:1fr}.mpanel{position:static;max-height:none}}
 @media (max-width:720px){
   .hero,.lower{grid-template-columns:1fr}
   .hero{gap:24px;margin:8px 0 16px}
@@ -227,6 +245,11 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   .route-h .btn{display:none}
   .stop-r{min-width:0;width:100%;text-align:left}
   .auth-in{grid-template-columns:1fr;min-height:0;gap:24px;margin-top:8px}
+  .map2{grid-template-columns:1fr}
+  .cpt{min-height:44px}
+  .mpanel{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:55vh;z-index:30;transform:translateY(calc(100% + 16px));transition:transform .24s var(--ease);border-color:var(--line2)}
+  .mpanel.open{transform:none}
+  .mpanel .x{display:inline-flex;position:absolute;top:8px;right:8px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -2557,49 +2580,44 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
 
   // ───────────── systems map ─────────────
   function mapView() {
-    const cc = scoped(), nodes = B.nodes.filter(n => n.sec === 'moto');
-    const W = 1560, H = 1180, P = {};
+    const cc = scoped(), nodes = B.nodes.filter(n => n.sec === 'moto'), IN = new Set(cc.map(c => c.id));
     const col = { new: '#55585e', learning: '#b38f00', shaky: '#ff5a36', mastered: '#4cc38a' };
     const LBL = { new: 'Not started', learning: 'Learning', shaky: 'Shaky', mastered: 'Mastered' };
-    const COLS = 5; nodes.forEach((n, k) => { n._x = 170 + (k % COLS) * 305; n._y = 150 + Math.floor(k / COLS) * 290; });
-    cc.forEach(c => { const n = NODE[c.n], sib = cc.filter(x => x.n === c.n), j = sib.indexOf(c), a = j / sib.length * Math.PI * 2, rr = sib.length > 1 ? 34 + sib.length * 5 : 0;
-      P[c.id] = { x: n._x + Math.cos(a) * rr, y: n._y + 20 + Math.sin(a) * rr * 0.8, vx: 0, vy: 0, c }; });
-    const ES = new Set(); cc.forEach(c => (c.links || []).forEach(l => { if (P[l] && l !== c.id) ES.add([c.id, l].sort().join(' ')); }));
+    const ES = new Set(); cc.forEach(c => (c.links || []).forEach(l => { if (IN.has(l) && l !== c.id) ES.add([c.id, l].sort().join(' ')); }));
     const E = [...ES].map(x => x.split(' '));
-    for (let it = 0; it < 200; it++) {
-      const ps = Object.values(P);
-      for (let a = 0; a < ps.length; a++) for (let b = a + 1; b < ps.length; b++) { const p = ps[a], q = ps[b]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy + 0.01; if (d2 > 9000) continue; const f = 260 / d2; p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
-      ps.forEach(p => { const n = NODE[p.c.n]; p.vx += (n._x - p.x) * 0.02; p.vy += (n._y + 20 - p.y) * 0.02; p.x += p.vx; p.y += p.vy; p.vx *= 0.5; p.vy *= 0.5; });
-    }
-    const svg = `<svg id="msvg" viewBox="0 0 ${W} ${H}"><g id="mg">
-      ${nodes.map(n => `<rect x="${n._x - 140}" y="${n._y - 100}" width="280" height="250" rx="16" fill="rgba(255,255,255,.02)" stroke="rgba(236,233,225,.08)"/><text x="${n._x}" y="${n._y - 74}" fill="#b3b0a9" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-size="22" font-weight="600" text-anchor="middle">${esc(n.title)}</text>`).join('')}
-      ${E.map(([a, b]) => `<line data-e="${a} ${b}" x1="${P[a].x}" y1="${P[a].y}" x2="${P[b].x}" y2="${P[b].y}" stroke="#454a52" stroke-width="1.2" opacity="${NODE[CON[a].n] === NODE[CON[b].n] ? .9 : .35}"/>`).join('')}
-      ${Object.values(P).map(p => { const st = status(p.c); return `<g data-c="${p.c.id}" style="cursor:pointer"><circle cx="${p.x}" cy="${p.y}" r="${8 + (p.c.links || []).length}" fill="${col[st]}" stroke="#0e0f11" stroke-width="2"/><text x="${p.x}" y="${p.y + 24}" fill="#cfcabe" font-size="11" text-anchor="middle" font-family="var(--font-ui)">${esc(p.c.t.length > 26 ? p.c.t.slice(0, 24) + '…' : p.c.t)}</text></g>`; }).join('')}
-      </g></svg>`;
-    view(`<button class="btn ghost" data-go="home">${I.left}Home</button>
-      <div class="row between" style="margin:16px 0 12px;align-items:flex-end"><div><h2>Systems map</h2><div class="sub">Lines = “this affects that”. Tap a node. Drag to pan, scroll or pinch to zoom.</div></div>
-      <div class="map-legend">${Object.entries(col).map(([k, v]) => `<span><span class="dot" style="background:${v}"></span>${LBL[k]}</span>`).join('')}</div></div>
-      <div class="mapwrap" id="mw">${svg}<div class="side" id="side"><h3>Pick a concept</h3><p class="sub">Each node is one idea from the guide. Its neighbours are the ideas it explains or depends on. Drilling a node asks it in several different ways.</p></div></div>`);
-    const s = $('#msvg'), g = $('#mg'); let tx = 0, ty = 0, k = 1, drag = null;
-    const apply = () => g.setAttribute('transform', `translate(${tx},${ty}) scale(${k})`);
-    s.addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY < 0 ? 1.12 : 1 / 1.12; k = Math.max(.5, Math.min(4, k * f)); apply(); }, { passive: false });
-    const pts = new Map();
-    s.addEventListener('pointerdown', e => { s.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); drag = { x: e.clientX, y: e.clientY, tx, ty, moved: false, d0: null, k0: k }; });
-    s.addEventListener('pointermove', e => {
-      if (!drag) return; pts.set(e.pointerId, [e.clientX, e.clientY]); const sc = W / s.clientWidth;
-      if (pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); drag.d0 ??= d; k = Math.max(.5, Math.min(4, drag.k0 * d / drag.d0)); apply(); drag.moved = true; return; }
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; tx = drag.tx + dx * sc; ty = drag.ty + dy * sc; apply();
+    const DEF_P = `<h3>Pick a concept</h3><p class="sub">Each concept is one idea from the guide. Lines show the ideas it explains or depends on. Drilling a concept asks it in several different ways.</p>`;
+    let body = '', open = false;
+    nodes.forEach(n => {
+      if (CH_START[n.id]) { body += `${open ? '</div>' : ''}<div class="sec-h"><h3>${CH_START[n.id]}</h3></div><div class="sys-grid">`; open = true; }
+      const st = nodeStats(n.id); if (!st.n) return;
+      body += `<section class="sys" data-n="${n.id}"><div class="sys-h"><span class="sys-t">${esc(n.title)}</span><span class="meta mono">${st.m}/${st.n}</span></div>
+        ${scopedNode(n.id).map(c => `<button class="cpt" data-c="${c.id}" aria-pressed="false"><span class="dot ${status(c)}"></span><span>${esc(c.t)}</span></button>`).join('')}</section>`;
     });
-    s.addEventListener('pointerup', e => { pts.delete(e.pointerId); const was = drag; drag = pts.size ? drag : null; if (was && !was.moved) { const t = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-c]'); if (t) sideFor(t.dataset.c); } });
-    function sideFor(id) {
+    if (open) body += '</div>';
+    view(`<button class="btn ghost" data-go="home">${I.left}Home</button>
+      <div class="row between" style="margin:16px 0 12px;align-items:flex-end"><div><h2>Systems map</h2><div class="sub">Tap a concept to see what it affects and what affects it.</div></div>
+      <div class="map-legend">${Object.entries(col).map(([k, v]) => `<span><span class="dot" style="background:${v}"></span>${LBL[k]}</span>`).join('')}</div></div>
+      <div class="map2"><div class="map2-body" id="mbody">${body}<svg id="mlines" aria-hidden="true"></svg></div><aside class="mpanel" id="mpanel" aria-live="polite">${DEF_P}</aside></div>`);
+    const mb = $('#mbody'), mp = $('#mpanel'); let sel = null;
+    function clear() {
+      sel = null; mb.classList.remove('focus'); mp.classList.remove('open'); mp.innerHTML = DEF_P;
+      $$('.cpt', mb).forEach(r => { r.classList.remove('on', 'nb'); r.setAttribute('aria-pressed', 'false'); }); $$('.sys', mb).forEach(s => s.classList.remove('nbs'));
+    }
+    function pick(id) {
+      if (sel === id) return clear();
+      clear(); sel = id; mb.classList.add('focus'); mp.classList.add('open');
       const c = CON[id], st = status(c), nb = new Set(); E.forEach(([a, b]) => { if (a === id) nb.add(b); if (b === id) nb.add(a); });
-      $$('[data-e]').forEach(l => { const [a, b] = l.dataset.e.split(' '); const on = a === id || b === id; l.setAttribute('stroke', on ? '#f2c200' : '#454a52'); l.setAttribute('stroke-width', on ? 3 : 1.2); l.setAttribute('opacity', on ? 1 : .35); });
-      $('#side').innerHTML = `<div class="meta">${esc(NODE[c.n].title)} · <span class="mono">p. ${c.p}</span></div><h3 style="margin-top:4px">${esc(c.t)}</h3>${S.settings.fr && c.fr ? `<div class="fr">FR · ${esc(c.fr)}</div>` : ''}
+      $$('.cpt', mb).forEach(r => { const on = r.dataset.c === id, n = nb.has(r.dataset.c); r.classList.toggle('on', on); r.classList.toggle('nb', n); r.setAttribute('aria-pressed', String(on)); if (on || n) r.closest('.sys').classList.add('nbs'); });
+      mp.innerHTML = `<button class="btn ghost x" aria-label="Close">${I.x}</button><div class="meta">${esc(NODE[c.n].title)} · <span class="mono">p. ${c.p}</span></div><h3 style="margin-top:4px">${esc(c.t)}</h3>${S.settings.fr && c.fr ? `<div class="fr">FR · ${esc(c.fr)}</div>` : ''}
         <div class="row" style="gap:8px;margin:8px 0"><span class="dot ${st}"></span><span class="meta">${STATUS_TXT[st]}</span></div><p style="font-size:14px;margin-bottom:12px">${esc(c.f)}</p>
         ${nb.size ? `<div class="meta" style="margin-bottom:8px">Connected to</div><div class="row" style="gap:8px">${[...nb].map(n => `<button class="chip" data-side="${n}">${esc(CON[n].t)}</button>`).join('')}</div>` : ''}
         <div class="row" style="margin-top:12px"><button class="btn pri" data-go="concept/${id}">Drill this</button></div>`;
-      $$('[data-side]').forEach(b => b.onclick = () => sideFor(b.dataset.side));
+      $('.x', mp).onclick = clear;
+      $$('[data-side]', mp).forEach(b => b.onclick = () => { pick(b.dataset.side); $(`.cpt[data-c="${b.dataset.side}"]`, mb).scrollIntoView({ block: 'center', behavior: 'smooth' }); });
     }
+    mb.addEventListener('click', e => { const r = e.target.closest('.cpt'); if (r) pick(r.dataset.c); else if (sel) clear(); });
+    const key = e => { if (e.key === 'Escape' && sel) clear(); };
+    document.addEventListener('keydown', key); cleanup.push(() => document.removeEventListener('keydown', key));
   }
 
   // ───────────── physics lab ─────────────
