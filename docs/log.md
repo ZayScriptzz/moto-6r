@@ -10,3 +10,7 @@
 ## 2026-11-24 10:33 EST: done
 - A1: migration `moto_progress_and_assets` applied (RLS on both; anon revoked; authenticated: CRUD own row on progress, select on assets).
 - A2: `index.html` 949 KB → 416 KB; `CONFIG.bookCrops` false until crops load.
+
+## 2026-11-24 11:13 EST: Task 1
+- Zay raised the cap for Task 1 only: 156 changed lines (35 deleted dead draft lines + 31 spec-verbatim markup/CSS). Committed as "Add Supabase sync and sign-in to 6R Ride Prep".
+- Supabase: "Allow new users to sign up" was ON despite the PuffTracker README; Zay approved turning it off; off and saved (verified after reload).
