@@ -14,3 +14,14 @@
 ## 2026-11-24 11:13 EST: Task 1
 - Zay raised the cap for Task 1 only: 156 changed lines (35 deleted dead draft lines + 31 spec-verbatim markup/CSS). Committed as "Add Supabase sync and sign-in to 6R Ride Prep".
 - Supabase: "Allow new users to sign up" was ON despite the PuffTracker README; Zay approved turning it off; off and saved (verified after reload).
+
+## 2026-11-24 11:24 EST: block A deploy + block B QA findings
+- A6: test user moto-e2e@example.com (uid f6a37058…) created by SQL (dashboard password entry is off-limits for the lead); creds only in ~/moto-6r-work/test.env (600). Crops uploaded to moto_assets via a temporary insert policy for that uid; policy dropped, insert revoked; authenticated now SELECT-only on moto_assets; anon has nothing on either table.
+- A7: repo ZayScriptzz/moto-6r (public; no book-crop bytes in any commit, checked with git log -p). Pages on main, CNAME moto.zxyframe.ca, build "built". Namecheap CNAME moto → zayscriptzz.github.io. added after Pages claimed the name; resolves on pdns1 and 1.1.1.1. HTTP 200 live; HTTPS cert pending.
+- B1 Chrome QA (local copy, desktop 1200 + phone 390):
+  - Map: nodes escape their system boxes (global repulsion, no containment), dots sit on box titles, labels overlap, 11px text in a 1560 viewBox (~7px on screen), cross-system edges everywhere, side panel covers clusters; on phone the map is a thumbnail under the panel; wheel zoom ignores the cursor.
+  - Diagrams page: card titles are raw keys (gears, counterbal…); redrawn SVG overlaps in rider (labels), counterbal (label on arrow), countersteer + trajectory (captions on the drawing), trajectory paths cross between its two panels.
+  - Book crops misframed (cut text columns): gears p.42, twosec p.97, thirds p.101, merge p.111, rail p.127. Needs the guide PDF (not readable from here).
+  - Physics lab: perception band dominates the lane, braking band is a sliver at the horizon, yellow band covers the centre line.
+  - Home on phone: 17 route stops crowd into one chain.
+  - No console errors on any screen visited (campaign, node, scen, play, lab, burst, diagrams, map, settings).
