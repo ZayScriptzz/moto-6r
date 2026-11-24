@@ -193,6 +193,8 @@ textarea.recall:focus{outline:none;border-color:rgba(242,194,0,.6)}
 .mpanel{position:sticky;top:72px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;max-height:calc(100vh - 96px);overflow:auto}
 .mpanel p{margin-top:8px}
 .mpanel .x{display:none}
+.mpanel .chip{white-space:normal;height:auto;min-height:28px;padding:4px 12px;line-height:20px;text-align:left}
+.mpanel .go{position:sticky;bottom:0;background:var(--panel);padding:12px 0 0;margin-top:12px}
 .map-legend{display:flex;gap:16px;font-size:12px;color:var(--ink2)}
 .map-legend span{display:inline-flex;align-items:center;gap:8px}
 /* lab */
@@ -247,8 +249,9 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
   .auth-in{grid-template-columns:1fr;min-height:0;gap:24px;margin-top:8px}
   .map2{grid-template-columns:1fr}
   .cpt{min-height:44px}
-  .mpanel{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:55vh;z-index:30;transform:translateY(calc(100% + 16px));transition:transform .24s var(--ease);border-color:var(--line2)}
+  .mpanel{position:fixed;left:8px;right:8px;bottom:8px;top:auto;max-height:min(60vh, calc(100vh - 160px));z-index:30;transform:translateY(calc(100% + 16px));transition:transform .24s var(--ease);border-color:var(--line2)}
   .mpanel.open{transform:none}
+  .map2-body.focus{padding-bottom:calc(60vh + 16px)}
   .mpanel .x{display:inline-flex;position:absolute;top:8px;right:8px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -2611,9 +2614,9 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
       mp.innerHTML = `<button class="btn ghost x" aria-label="Close">${I.x}</button><div class="meta">${esc(NODE[c.n].title)} · <span class="mono">p. ${c.p}</span></div><h3 style="margin-top:4px">${esc(c.t)}</h3>${S.settings.fr && c.fr ? `<div class="fr">FR · ${esc(c.fr)}</div>` : ''}
         <div class="row" style="gap:8px;margin:8px 0"><span class="dot ${st}"></span><span class="meta">${STATUS_TXT[st]}</span></div><p style="font-size:14px;margin-bottom:12px">${esc(c.f)}</p>
         ${nb.size ? `<div class="meta" style="margin-bottom:8px">Connected to</div><div class="row" style="gap:8px">${[...nb].map(n => `<button class="chip" data-side="${n}">${esc(CON[n].t)}</button>`).join('')}</div>` : ''}
-        <div class="row" style="margin-top:12px"><button class="btn pri" data-go="concept/${id}">Drill this</button></div>`;
+        <div class="row go"><button class="btn pri" data-go="concept/${id}">Drill this</button></div>`;
       $('.x', mp).onclick = clear;
-      $$('[data-side]', mp).forEach(b => b.onclick = () => { pick(b.dataset.side); $(`.cpt[data-c="${b.dataset.side}"]`, mb).scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+      $$('[data-side]', mp).forEach(b => b.onclick = () => { pick(b.dataset.side); if (!toTop()) $(`.cpt[data-c="${b.dataset.side}"]`, mb).scrollIntoView({ block: 'center', behavior: 'smooth' }); });
       drawLines();
     }
     // Lines from the selected dot to each linked dot, in #mbody coordinates; drawn in shortest first.
@@ -2636,7 +2639,10 @@ SC({ id: 'sc-rail', title: 'Angled tracks', p: '126–127', speed: '50 km/h',
     }
     const ro = new ResizeObserver(() => drawLines()); ro.observe(mb); cleanup.push(() => ro.disconnect());
     document.fonts.ready.then(drawLines);
-    mb.addEventListener('click', e => { const r = e.target.closest('.cpt'); if (r) pick(r.dataset.c); else if (sel) clear(); });
+    // Phones: the sheet covers the lower half, so park the selected row 96px below the top.
+    const PH = matchMedia('(max-width:720px)');
+    function toTop() { const r = sel && PH.matches && $(`.cpt[data-c="${sel}"]`, mb); if (r) scrollTo({ top: r.getBoundingClientRect().top + scrollY - 96, behavior: 'smooth' }); return !!r; }
+    mb.addEventListener('click', e => { const r = e.target.closest('.cpt'); if (r) { pick(r.dataset.c); toTop(); } else if (sel) clear(); });
     const key = e => { if (e.key === 'Escape' && sel) clear(); };
     document.addEventListener('keydown', key); cleanup.push(() => document.removeEventListener('keydown', key));
   }
