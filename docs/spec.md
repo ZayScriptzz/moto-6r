@@ -192,3 +192,21 @@ Replace the body of `mapView()` (from `const cc = scoped()` to the end of `sideF
 - Redraw on selection, on a `ResizeObserver` of `#mbody`, and after `document.fonts.ready`. Disconnect the observer through `cleanup`.
 
 **Verify:** check_scripts → `0 failed`. Then the presentation checks P1–P9 with headless Chrome against `python3 -m http.server 8768` served from the worktree (use the CDP pattern in `~/moto-6r-work/cdp-shot.mjs`). The map sits behind the sign-in gate: sign in with the test account through the form exactly like test/sync-e2e.mjs does (`set -a; . ~/moto-6r-work/test.env; set +a`). Do not bypass or edit the gate. Screenshots into `~/moto-6r-work/shots/map/`: `desk-default.png`, `desk-selected.png` (select concept `traction` if it exists, else the concept with the most links), `phone-default.png`, `phone-selected.png` (390×844, mobile emulation). Commit: `Draw amber connection lines on the systems map`.
+
+---
+
+# Block C: QA fixes from the Chrome pass (after the map merges; same worktree flow)
+
+## Task C1: real titles on the Diagrams page (one commit, ≤20 changed lines)
+Root cause: `diagrams()` prints the raw SVG key (`gears`, `counterbal`, …) as each card's `<h3>`.
+Fix: title = the `t` of the first concept in `B.concepts` whose `img === key`; else the `title` of the first scenario in `B.scen` that has a step with `img === key`; else the key. Escape it with `esc`. Every one of the 17 keys in `window.SVGS` is used by at least one concept or scenario (`grep -o "img: '…'"` count, 2026-11-24).
+Verify: check_scripts `0 failed`; on #diagrams (signed in) `[...document.querySelectorAll('#app .card h3')].map(h => h.textContent)` contains no string equal to a key of `window.SVGS`.
+
+## Task C2: overlaps in the redrawn diagrams (one commit, ≤120 changed lines)
+Root cause: hand-placed SVG text and paths collide in four diagrams (seen in Chrome at 1200 px, 2026-11-24):
+- `S.rider`: "Elbows slightly bent" and "Wrists slightly bent" leader lines cross and both labels crowd the arm; "Knees hug the tank" leader line runs through the leg.
+- `S.counterbal`: "Body shifts to the OUTSIDE" text sits on the arrow head.
+- `S.countersteer`: the caption "Countersteering · above ~25 km/h · right-hand curve" sits on the road drawing.
+- `S.trajectory`: the orange paths of the two panels cross the gap into the other panel; the yellow top caption sits on the road.
+Fix only those four. Move labels and leader lines so no text overlaps another text, a path or a shape's edge, give each caption its own empty band (enlarge the viewBox height if needed), and clip each trajectory panel to its own rectangle (`<clipPath>`). Keep colours, wording and the drawing style.
+Verify: check_scripts `0 failed`; screenshot each of the four cards on #diagrams (signed in, 1280×900) into `~/moto-6r-work/shots/diagrams/<key>.png` and confirm by eye that nothing overlaps. Also confirm with `getBBox()` that no two `<text>` elements in each of the four SVGs intersect (print the pairs checked and the count of intersections, expected 0).
