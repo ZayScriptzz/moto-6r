@@ -43,7 +43,8 @@ async function launch(name) {
 
 const VISIBLE = (id) => `(e => !!e && !e.hidden && getComputedStyle(e).display !== 'none')(document.getElementById('${id}'))`;
 const SIGNED_IN = `${VISIBLE("app")} && !${VISIBLE("auth")}`;
-const CLEAN = `(() => { try { return JSON.parse(localStorage['moto6r.sync.v1']).dirty === false; } catch (e) { return false; } })()`;
+const SAVED_AT = `(() => { try { return JSON.parse(localStorage['moto6r.sync.v1']).savedAt || 0; } catch (e) { return 0; } })()`;
+const CLEAN = (t) => `(() => { try { const m = JSON.parse(localStorage['moto6r.sync.v1']); return m.savedAt > ${t} && m.dirty === false; } catch (e) { return false; } })()`;
 async function signIn(dev) {
   await dev.ev(`document.getElementById('auth-email').value = ${JSON.stringify(EMAIL)}; document.getElementById('auth-pass').value = ${JSON.stringify(PASS)}; document.getElementById('auth-form').requestSubmit(); true`);
   return dev.waitFor(SIGNED_IN, 15000);
@@ -60,15 +61,17 @@ try {
   step("2 A: sign in shows the app", await signIn(A), `after 15 s: auth err "${await A.ev("document.getElementById('auth-err').textContent")}"`);
   await A.waitFor("document.getElementById('app').childElementCount > 0", 10000); // #app renders only after Store.load(), so S is the loaded state, not DEF()
   const x0 = await A.ev("__app.S.xp");
+  const tA = (await A.ev(SAVED_AT)) ?? 0;
   await A.ev("__app.S.xp += 7; Store.save(__app.S); true");
-  step("3 A: save syncs (dirty false)", await A.waitFor(`__app.S.xp === ${x0 + 7} && ${CLEAN}`, 10000), `x0=${x0}, sync meta ${await A.ev("localStorage['moto6r.sync.v1']")}`);
+  step("3 A: save syncs (dirty false)", await A.waitFor(`__app.S.xp === ${x0 + 7} && ${CLEAN(tA)}`, 10000), `x0=${x0}, sync meta ${await A.ev("localStorage['moto6r.sync.v1']")}`);
 
   const B = await launch("B");
   await B.waitFor(VISIBLE("auth"), 15000);
   const bIn = await signIn(B);
   step("4 B: signs in and sees A's change", bIn && (await B.waitFor(`__app.S.xp === ${x0 + 7}`, 15000)), `signed in ${bIn}, B xp ${await B.ev("__app.S.xp")}, want ${x0 + 7}`);
+  const tB = (await B.ev(SAVED_AT)) ?? 0;
   await B.ev("__app.S.xp += 5; Store.save(__app.S); true");
-  step("5 B: save syncs (dirty false)", await B.waitFor(`__app.S.xp === ${x0 + 12} && ${CLEAN}`, 10000), `sync meta ${await B.ev("localStorage['moto6r.sync.v1']")}`);
+  step("5 B: save syncs (dirty false)", await B.waitFor(`__app.S.xp === ${x0 + 12} && ${CLEAN(tB)}`, 10000), `sync meta ${await B.ev("localStorage['moto6r.sync.v1']")}`);
 
   await A.ev("document.dispatchEvent(new Event('visibilitychange')); true");
   step("6 A: visibilitychange pulls B's change", await A.waitFor(`__app.S.xp === ${x0 + 12}`, 10000), `A xp ${await A.ev("__app.S.xp")}, want ${x0 + 12}, document.hidden ${await A.ev("document.hidden")}`);
@@ -87,7 +90,7 @@ try {
   for (const d of devices) {
     try { d.ws && d.ws.close(); } catch (e) { console.warn(`  [${d.name}] ws close failed`, e.message); }
     await new Promise((r) => { d.proc.once("exit", r); d.proc.kill(); setTimeout(r, 3000); });
-    rmSync(d.prof, { recursive: true, force: true });
+    try { rmSync(d.prof, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { console.warn(`  [${d.name}] profile cleanup failed`, e.message); }
   }
   console.log(failed ? `${failed} step(s) failed` : "all steps passed");
   process.exitCode = failed ? 1 : 0;
